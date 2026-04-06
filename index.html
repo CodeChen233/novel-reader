@@ -88,7 +88,6 @@ body {
   display: flex;
   overflow: hidden;
   transition: background 0.3s, color 0.3s;
-  /* iOS 刘海/底部安全区 */
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
 }
@@ -119,9 +118,8 @@ body {
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
 }
-#sidebar.open {
-  transform: translateX(0);
-}
+#sidebar.open { transform: translateX(0); }
+
 .sidebar-header {
   padding: 20px 16px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
@@ -143,6 +141,16 @@ body {
   margin-top: 4px;
   opacity: 0.7;
 }
+
+.sidebar-section-label {
+  font-size: 10px;
+  color: var(--sidebar-text);
+  opacity: 0.5;
+  padding: 12px 16px 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
 #book-list-area {
   flex: 1;
   overflow-y: auto;
@@ -320,6 +328,7 @@ body {
 .welcome-icon { font-size: 64px; }
 .welcome-title { font-size: 24px; font-weight: 700; color: var(--text-color); }
 .welcome-subtitle { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+
 #drop-zone {
   border: 2px dashed var(--accent);
   background: var(--drop-zone);
@@ -348,6 +357,26 @@ body {
   display: none;
 }
 #chapter-content p { margin-bottom: 1em; text-indent: 2em; }
+
+/* 章节加载动画 */
+#chapter-loading {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+#chapter-loading.visible { display: flex; }
+#chapter-loading .spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#chapter-loading p { font-size: 14px; }
 
 /* 翻页按钮 */
 #nav-btns {
@@ -522,15 +551,6 @@ body {
 }
 
 #file-input { display: none; }
-
-/* 手势滑动区域（整个内容区） */
-#swipe-area {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
 </style>
 </head>
 <body>
@@ -544,12 +564,10 @@ body {
 <div id="sidebar">
   <div class="sidebar-header">
     <div class="sidebar-title"><span>📖</span> 本地书架</div>
-    <div class="sidebar-subtitle">点击"导入"按钮添加TXT小说</div>
+    <div class="sidebar-subtitle">导入的小说永久保存</div>
   </div>
   <div id="book-list-area">
-    <div style="padding:24px 16px;text-align:center;color:var(--sidebar-text);font-size:13px;opacity:0.6">
-      暂无小说<br>点击下方"导入"按钮添加
-    </div>
+    <!-- 动态生成 -->
   </div>
   <div class="sidebar-footer">
     <button class="import-btn" id="import-btn">＋ 导入小说 TXT</button>
@@ -569,7 +587,7 @@ body {
     <button class="topbar-btn" id="toggle-sidebar-btn" title="书架">☰</button>
     <div id="book-title-bar">
       <h2 id="current-book-name">📚 小说阅读器</h2>
-      <p id="current-chapter-name">导入TXT文件开始阅读</p>
+      <p id="current-chapter-name">选择一本书开始阅读</p>
     </div>
     <div class="theme-btns">
       <div class="theme-dot t-light active" data-theme="light" title="护眼纸质"></div>
@@ -595,16 +613,21 @@ body {
         <div class="welcome-icon">📚</div>
         <div class="welcome-title">卖萌的小说阅读器</div>
         <div class="welcome-subtitle">
-          点击左上角 ☰ 打开书架<br>
-          点击"导入"按钮选择TXT文件<br>
-          自动解析章节，离线也能用
+          导入 TXT 小说开始阅读<br>
+          永久保存，换手机也不丢
         </div>
         <div id="drop-zone">
           <div class="drop-text">
-            <strong>📂 点击导入TXT小说</strong><br>
-            <span style="margin-top:8px;display:block;font-size:12px">支持UTF-8 / GBK编码</span>
+            <strong>📂 导入 TXT 小说</strong><br>
+            <span style="margin-top:8px;display:block;font-size:12px">支持 UTF-8 / GBK 编码 · 永久保存</span>
           </div>
         </div>
+      </div>
+
+      <!-- 章节加载中 -->
+      <div id="chapter-loading">
+        <div class="spinner"></div>
+        <p id="chapter-loading-text">正在加载章节...</p>
       </div>
 
       <div id="chapter-title"></div>
@@ -672,7 +695,6 @@ function isIOS() {
 function isInStandaloneMode() {
   return ('standalone' in window.navigator) && window.navigator.standalone;
 }
-
 window.addEventListener('load', () => {
   if (isIOS() && !isInStandaloneMode()) {
     const dismissed = localStorage.getItem('install_dismissed');
@@ -693,14 +715,13 @@ let deferredPrompt;
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   deferredPrompt = e;
-  // 可在此显示安装按钮
 });
 
 /* ========================================================
    全局状态
    ======================================================== */
 const STATE = {
-  books: {},
+  books: {},          // 所有书（用户导入）
   currentBookId: null,
   currentChapterIdx: 0,
   theme: 'light',
@@ -715,7 +736,93 @@ let _bookIdCounter = 0;
 function genBookId() { return 'b' + (++_bookIdCounter); }
 
 /* ========================================================
-   持久化
+   IndexedDB 层
+   ======================================================== */
+const DB_NAME = 'novel-reader-db';
+const DB_VERSION = 1;
+let _db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => { _db = req.result; resolve(_db); };
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('books')) {
+        const store = db.createObjectStore('books', { keyPath: 'id' });
+        store.createIndex('name', 'name', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('chapters')) {
+        db.createObjectStore('chapters', { keyPath: 'key' });
+      }
+    };
+  });
+}
+
+function idbGet(storeName, key) {
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbPut(storeName, data) {
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(storeName, 'readwrite');
+    const req = tx.objectStore(storeName).put(data);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbGetAll(storeName) {
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbDelete(storeName, key) {
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(storeName, 'readwrite');
+    const req = tx.objectStore(storeName).delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// 存储章节 key = `${bookId}/${idx}`
+function saveChapterToIDB(bookId, idx, data) {
+  return idbPut('chapters', { key: `${bookId}/${idx}`, data, savedAt: Date.now() });
+}
+
+function loadChapterFromIDB(bookId, idx) {
+  return idbGet('chapters', `${bookId}/${idx}`);
+}
+
+function deleteBookFromIDB(bookId) {
+  return new Promise((resolve, reject) => {
+    const tx = _db.transaction(['books', 'chapters'], 'readwrite');
+    tx.objectStore('books').delete(bookId);
+    // 删除该书所有章节（手动遍历）
+    const cs = tx.objectStore('chapters');
+    const range = IDBKeyRange.bound(`${bookId}/`, `${bookId}/\uffff`);
+    cs.openCursor(range).onsuccess = e => {
+      const cursor = e.target.result;
+      if (cursor) { cursor.delete(); cursor.continue(); }
+    };
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/* ========================================================
+   持久化（偏好设置）
    ======================================================== */
 function savePref() {
   try {
@@ -724,6 +831,7 @@ function savePref() {
     if (STATE.currentBookId) {
       const book = STATE.books[STATE.currentBookId];
       if (book) {
+        localStorage.setItem('rdr_lastBookId', STATE.currentBookId);
         localStorage.setItem('rdr_lastBookName', book.name);
         localStorage.setItem('rdr_lastChapter', STATE.currentChapterIdx);
       }
@@ -749,7 +857,6 @@ function applyTheme(theme, save = true) {
   document.querySelectorAll('.theme-dot').forEach(d =>
     d.classList.toggle('active', d.dataset.theme === theme)
   );
-  // 更新 theme-color meta
   document.querySelector('meta[name="theme-color"]').content =
     theme === 'dark' ? '#16213e' : theme === 'eye-care' ? '#c0d0a8' : '#6c63ff';
   if (save) savePref();
@@ -796,9 +903,6 @@ document.getElementById('file-input').addEventListener('change', function(e) {
   this.value = '';
 });
 
-/* ========================================================
-   处理传入文件
-   ======================================================== */
 function handleIncomingFiles(files) {
   if (!files.length) return;
   STATE.lastImportedFiles = files;
@@ -856,26 +960,36 @@ function showEncBanner(enc) {
   document.getElementById('enc-banner').classList.add('visible');
 }
 
-function addBookFromResults(bookName, results) {
+async function addBookFromResults(bookName, results) {
   let bookId = null;
   for (const [id, b] of Object.entries(STATE.books)) {
     if (b.name === bookName) { bookId = id; break; }
   }
-  if (!bookId) {
-    bookId = genBookId();
-    STATE.books[bookId] = { id: bookId, name: bookName, chapters: [] };
-  } else {
-    STATE.books[bookId].chapters = [];
-  }
+  if (!bookId) { bookId = genBookId(); }
+
+  const chapters = [];
   let totalChapters = 0;
   results.forEach(({ name, content }) => {
     if (!content) return;
     const chs = parseChapters(content, name);
-    STATE.books[bookId].chapters.push(...chs);
+    chapters.push(...chs);
     totalChapters += chs.length;
   });
+
+  const bookData = {
+    id: bookId,
+    name: bookName,
+    chapters: chapters,
+    importedAt: Date.now(),
+  };
+
+  STATE.books[bookId] = bookData;
+
+  // 存入 IndexedDB
+  if (_db) await idbPut('books', bookData);
+
   renderBookList();
-  showToast(`✅ 「${bookName}」导入成功，共 ${totalChapters} 章`, 'success');
+  showToast(`✅「${bookName}」导入成功，共 ${totalChapters} 章`, 'success');
   openBook(bookId);
 }
 
@@ -921,42 +1035,22 @@ function naturalSort(a, b) {
 }
 
 /* ========================================================
-   渲染书架
+   渲染书架（侧边栏）
    ======================================================== */
 function renderBookList() {
   const area = document.getElementById('book-list-area');
   const books = Object.values(STATE.books);
+
   if (!books.length) {
     area.innerHTML = `<div style="padding:24px 16px;text-align:center;
       color:var(--sidebar-text);font-size:13px;opacity:0.6">
       暂无小说<br>点击下方「导入」按钮添加</div>`;
     return;
   }
-  area.innerHTML = books.map(book => {
-    const isExpanded = STATE.currentBookId === book.id;
-    const safeId = book.id;
-    const chaptersHtml = book.chapters.map((ch, idx) => {
-      const isActive = STATE.currentBookId === book.id && STATE.currentChapterIdx === idx;
-      return `<div class="chapter-item${isActive ? ' active' : ''}"
-                   id="ci-${safeId}-${idx}"
-                   data-book="${safeId}" data-idx="${idx}">
-                ${escHtml(ch.title)}
-              </div>`;
-    }).join('');
-    return `<div class="book-section">
-      <div class="book-header${isExpanded ? ' expanded' : ''}" data-book="${safeId}">
-        <span class="book-arrow">▶</span>
-        <span class="book-icon">📕</span>
-        <span class="book-name" title="${escHtml(book.name)}">${escHtml(book.name)}</span>
-        <span class="book-count">${book.chapters.length}章</span>
-        <button class="book-del-btn" data-del="${safeId}" title="删除">✕</button>
-      </div>
-      <div class="chapter-list${isExpanded ? ' visible' : ''}" id="cl-${safeId}">
-        ${chaptersHtml}
-      </div>
-    </div>`;
-  }).join('');
 
+  area.innerHTML = books.map(book => renderBookItem(book)).join('');
+
+  // 事件绑定
   area.querySelectorAll('.book-header').forEach(el => {
     el.addEventListener('click', function(e) {
       if (e.target.classList.contains('book-del-btn')) return;
@@ -977,6 +1071,33 @@ function renderBookList() {
   });
 }
 
+function renderBookItem(book) {
+  const isExpanded = STATE.currentBookId === book.id;
+  const safeId = book.id;
+  const chaptersHtml = book.chapters.slice(0, 200).map((ch, idx) => {
+    const isActive = STATE.currentBookId === book.id && STATE.currentChapterIdx === idx;
+    const chTitle = ch.title || `第 ${idx + 1} 章`;
+    return `<div class="chapter-item${isActive ? ' active' : ''}"
+                 id="ci-${safeId}-${idx}"
+                 data-book="${safeId}" data-idx="${idx}">
+              ${escHtml(chTitle)}
+            </div>`;
+  }).join('');
+
+  return `<div class="book-section">
+    <div class="book-header${isExpanded ? ' expanded' : ''}" data-book="${safeId}">
+      <span class="book-arrow">▶</span>
+      <span class="book-icon">📖</span>
+      <span class="book-name" title="${escHtml(book.name)}">${escHtml(book.name)}</span>
+      <span class="book-count">${book.chapters.length}章</span>
+      <button class="book-del-btn" data-del="${safeId}" title="删除">✕</button>
+    </div>
+    <div class="chapter-list${isExpanded ? ' visible' : ''}" id="cl-${safeId}">
+      ${chaptersHtml}
+    </div>
+  </div>`;
+}
+
 function toggleBook(bookId) {
   if (STATE.currentBookId === bookId) {
     const header = document.querySelector(`[data-book="${bookId}"].book-header`);
@@ -988,28 +1109,34 @@ function toggleBook(bookId) {
   }
 }
 
-function openBook(bookId) {
+async function openBook(bookId, forceChapter = null) {
   STATE.currentBookId = bookId;
   const book = STATE.books[bookId];
   if (!book) return;
-  let savedChapter = 0;
-  try {
-    const savedName = localStorage.getItem('rdr_lastBookName');
-    if (savedName === book.name) {
-      savedChapter = parseInt(localStorage.getItem('rdr_lastChapter') || '0');
-      if (savedChapter >= book.chapters.length) savedChapter = 0;
-    }
-  } catch(e) {}
+
+  let savedChapter = forceChapter;
+  if (savedChapter === null) {
+    try {
+      const savedName = localStorage.getItem('rdr_lastBookName');
+      if (savedName === book.name) {
+        savedChapter = parseInt(localStorage.getItem('rdr_lastChapter') || '0');
+      }
+    } catch(e) {}
+    if (savedChapter === null || savedChapter === undefined) savedChapter = 0;
+    if (savedChapter >= book.chapters.length) savedChapter = 0;
+  }
+
   STATE.currentChapterIdx = savedChapter;
   renderBookList();
   loadChapter(bookId, savedChapter);
+
   setTimeout(() => {
     const el = document.getElementById(`ci-${bookId}-${savedChapter}`);
     if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, 150);
 }
 
-function deleteBook(bookId) {
+async function deleteBook(bookId) {
   const book = STATE.books[bookId];
   if (!book) return;
   if (!confirm(`确定移除「${book.name}」吗？`)) return;
@@ -1019,6 +1146,9 @@ function deleteBook(bookId) {
     STATE.currentChapterIdx = 0;
     showWelcome();
   }
+  if (_db) {
+    await deleteBookFromIDB(bookId);
+  }
   renderBookList();
   showToast(`已移除「${book.name}」`);
 }
@@ -1027,16 +1157,17 @@ function showWelcome() {
   document.getElementById('welcome-screen').style.display = 'flex';
   document.getElementById('chapter-title').style.display = 'none';
   document.getElementById('chapter-content').style.display = 'none';
+  document.getElementById('chapter-loading').classList.remove('visible');
   document.getElementById('nav-btns').style.display = 'none';
   document.getElementById('current-book-name').textContent = '📚 小说阅读器';
-  document.getElementById('current-chapter-name').textContent = '导入TXT文件开始阅读';
+  document.getElementById('current-chapter-name').textContent = '选择一本书开始阅读';
   document.getElementById('progress-bar').style.width = '0%';
 }
 
 /* ========================================================
    加载章节
    ======================================================== */
-function loadChapter(bookId, idx) {
+async function loadChapter(bookId, idx) {
   const book = STATE.books[bookId];
   if (!book) return;
   if (idx < 0) idx = 0;
@@ -1045,44 +1176,58 @@ function loadChapter(bookId, idx) {
 
   STATE.currentBookId = bookId;
   STATE.currentChapterIdx = idx;
-  const ch = book.chapters[idx];
 
-  document.getElementById('current-book-name').textContent = book.name;
-  document.getElementById('current-chapter-name').textContent = ch.title;
-
+  // 显示加载动画
   document.getElementById('welcome-screen').style.display = 'none';
-  document.getElementById('chapter-title').style.display = 'block';
-  document.getElementById('chapter-content').style.display = 'block';
-  document.getElementById('nav-btns').style.display = 'flex';
+  document.getElementById('chapter-title').style.display = 'none';
+  document.getElementById('chapter-content').style.display = 'none';
+  document.getElementById('chapter-loading').classList.add('visible');
+  document.getElementById('chapter-loading-text').textContent = `正在加载章节 ${idx + 1}...`;
+  document.getElementById('nav-btns').style.display = 'none';
 
-  document.getElementById('chapter-title').textContent = ch.title;
-
-  const html = ch.content
-    .split(/\n+/)
-    .map(l => l.trim())
-    .filter(l => l.length > 0)
-    .map(l => `<p>${escHtml(l)}</p>`)
-    .join('');
-
-  document.getElementById('chapter-content').innerHTML =
-    html || '<p style="color:var(--text-muted)">（本章内容为空）</p>';
-
-  document.getElementById('prev-btn').disabled = (idx === 0);
-  document.getElementById('next-btn').disabled = (idx === book.chapters.length - 1);
-
-  document.getElementById('content-area').scrollTop = 0;
-  updateProgress();
+  const ch = book.chapters[idx];
+  document.getElementById('current-book-name').textContent = book.name;
+  document.getElementById('current-chapter-name').textContent = ch.title || `第 ${idx + 1} 章`;
 
   try {
-    localStorage.setItem('rdr_lastBookName', book.name);
-    localStorage.setItem('rdr_lastChapter', idx);
-  } catch(e) {}
+    const content = ch.content;
+    if (!content) throw new Error('章节内容为空');
 
-  document.querySelectorAll('.chapter-item').forEach(el => el.classList.remove('active'));
-  const activeEl = document.getElementById(`ci-${bookId}-${idx}`);
-  if (activeEl) activeEl.classList.add('active');
+    document.getElementById('chapter-loading').classList.remove('visible');
+    document.getElementById('chapter-title').style.display = 'block';
+    document.getElementById('chapter-content').style.display = 'block';
+    document.getElementById('nav-btns').style.display = 'flex';
 
-  savePref();
+    document.getElementById('chapter-title').textContent = ch.title || `第 ${idx + 1} 章`;
+
+    const html = content
+      .split(/\n+/)
+      .map(l => l.trim())
+      .filter(l => l.length > 0)
+      .map(l => `<p>${escHtml(l)}</p>`)
+      .join('');
+
+    document.getElementById('chapter-content').innerHTML =
+      html || '<p style="color:var(--text-muted)">（本章内容为空）</p>';
+
+    document.getElementById('prev-btn').disabled = (idx === 0);
+    document.getElementById('next-btn').disabled = (idx === book.chapters.length - 1);
+
+    document.getElementById('content-area').scrollTop = 0;
+    updateProgress();
+
+    // 更新侧边栏高亮
+    document.querySelectorAll('.chapter-item').forEach(el => el.classList.remove('active'));
+    const activeEl = document.getElementById(`ci-${bookId}-${idx}`);
+    if (activeEl) activeEl.classList.add('active');
+
+    savePref();
+
+  } catch (e) {
+    console.error('加载章节失败:', e);
+    document.getElementById('chapter-loading').classList.remove('visible');
+    showToast('章节加载失败，请重试', 'error');
+  }
 }
 
 function prevChapter() {
@@ -1125,36 +1270,49 @@ function closeSearch() {
   document.getElementById('search-overlay').classList.remove('visible');
 }
 
-function doSearch() {
+async function doSearch() {
   const query = document.getElementById('search-input').value.trim();
   const resultsEl = document.getElementById('search-results');
   if (!query) { resultsEl.innerHTML = '<div class="search-empty">输入关键词开始搜索</div>'; return; }
   if (!STATE.currentBookId) return;
   const book = STATE.books[STATE.currentBookId];
   if (!book) return;
+
+  showToast('正在搜索...', '', 800);
+  resultsEl.innerHTML = '<div class="search-empty">搜索中...</div>';
+
   let re;
   try { re = new RegExp(escRegex(query), 'gi'); } catch(e) { return; }
   const results = [];
-  book.chapters.forEach((ch, idx) => {
-    const matches = ch.content.match(re);
-    if (!matches) return;
-    const pos = ch.content.search(re);
+
+  for (let idx = 0; idx < book.chapters.length; idx++) {
+    const ch = book.chapters[idx];
+    const content = ch.content;
+    if (!content) continue;
+
+    const matches = content.match(re);
+    if (!matches) continue;
+
+    const pos = content.search(re);
     const start = Math.max(0, pos - 40);
-    const end = Math.min(ch.content.length, pos + 100);
-    const rawExcerpt = ch.content.slice(start, end).replace(/[\r\n]+/g, ' ');
+    const end = Math.min(content.length, pos + 100);
+    const rawExcerpt = content.slice(start, end).replace(/[\r\n]+/g, ' ');
     const highlightedExcerpt = rawExcerpt.split(re).map((part, i) => {
       const escaped = escHtml(part);
       if (i === 0) return escaped;
       const matchWord = rawExcerpt.match(re)?.[i - 1] || query;
       return `<span class="search-highlight">${escHtml(matchWord)}</span>${escaped}`;
     }).join('');
-    results.push({ chIdx: idx, title: ch.title, excerpt: highlightedExcerpt, count: matches.length });
-  });
+    results.push({ chIdx: idx, title: ch.title || `第 ${idx + 1} 章`, excerpt: highlightedExcerpt, count: matches.length });
+
+    if (results.length >= 50) break;
+  }
+
   if (!results.length) {
     resultsEl.innerHTML = `<div class="search-empty">未找到「${escHtml(query)}」的内容</div>`;
     return;
   }
-  resultsEl.innerHTML = results.slice(0, 50).map(r => `
+  resultsEl.innerHTML = results.map(r => `
     <div class="search-result-item" data-idx="${r.chIdx}">
       <div class="search-result-chapter">📖 ${escHtml(r.title)} · ${r.count} 处</div>
       <div class="search-result-text">…${r.excerpt}…</div>
@@ -1216,16 +1374,13 @@ function bindEvents() {
   document.getElementById('import-btn').addEventListener('click', triggerImport);
   document.getElementById('drop-zone').addEventListener('click', triggerImport);
 
-  // 字体按钮（移动端 A- A+）
   document.getElementById('font-dec').addEventListener('click', () => applyFontSize(STATE.fontSize - 1));
   document.getElementById('font-inc').addEventListener('click', () => applyFontSize(STATE.fontSize + 1));
 
-  // 主题
   document.querySelectorAll('.theme-dot').forEach(el => {
     el.addEventListener('click', function() { applyTheme(this.dataset.theme); });
   });
 
-  // 搜索
   document.getElementById('search-btn').addEventListener('click', openSearch);
   document.getElementById('search-btn2').addEventListener('click', openSearch);
   document.getElementById('search-close-btn').addEventListener('click', closeSearch);
@@ -1234,17 +1389,14 @@ function bindEvents() {
     if (e.target === document.getElementById('search-overlay')) closeSearch();
   });
 
-  // 翻页
   document.getElementById('prev-btn').addEventListener('click', prevChapter);
   document.getElementById('next-btn').addEventListener('click', nextChapter);
   document.getElementById('top-btn').addEventListener('click', () => {
     document.getElementById('content-area').scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  // 进度条
   document.getElementById('content-area').addEventListener('scroll', updateProgress);
 
-  // 编码切换
   const encBtn = document.getElementById('enc-toggle');
   encBtn.addEventListener('click', function() {
     STATE.encoding = STATE.encoding === 'UTF-8' ? 'GBK' : 'UTF-8';
@@ -1267,10 +1419,29 @@ function bindEvents() {
 /* ========================================================
    初始化
    ======================================================== */
-function init() {
+async function init() {
   loadPref();
   bindEvents();
+
+  // 打开 IndexedDB，恢复已导入的书
+  try {
+    await openDB();
+    const savedBooks = await idbGetAll('books');
+    for (const book of savedBooks) {
+      STATE.books[book.id] = book;
+    }
+  } catch (e) {
+    console.warn('IndexedDB 初始化失败:', e);
+  }
+
   renderBookList();
+
+  // 自动恢复上次阅读
+  const lastBookId = localStorage.getItem('rdr_lastBookId');
+  if (lastBookId && STATE.books[lastBookId]) {
+    const lastChapter = parseInt(localStorage.getItem('rdr_lastChapter') || '0');
+    openBook(lastBookId, lastChapter);
+  }
 }
 
 init();
