@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>📖 卖萌的小说阅读器</title>
+
+<!-- PWA 元数据 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6c63ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="小说阅读器">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+<link rel="apple-touch-icon" sizes="144x144" href="icons/icon-144.png">
+<link rel="apple-touch-icon" sizes="128x128" href="icons/icon-128.png">
+
+<style>
+/* ===== CSS变量 & 主题 ===== */
+:root {
+  --bg: #f5f0e8;
+  --sidebar-bg: #2c2c3e;
+  --sidebar-text: #c8c8d8;
+  --sidebar-hover: #3d3d52;
+  --content-bg: #faf7f2;
+  --text-color: #2d2d2d;
+  --text-muted: #888;
+  --border: #e0d9ce;
+  --header-bg: #ffffff;
+  --shadow: rgba(0,0,0,0.08);
+  --font-size: 18px;
+  --line-height: 1.9;
+  --accent: #6c63ff;
+  --accent-hover: #5a52e0;
+  --chapter-active-bg: rgba(108,99,255,0.15);
+  --scrollbar: #ccc;
+  --tag-bg: rgba(108,99,255,0.12);
+  --drop-zone: rgba(108,99,255,0.06);
+  /* iOS 安全区 */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+body.dark {
+  --bg: #1a1a2e;
+  --sidebar-bg: #16213e;
+  --sidebar-text: #a8a8c0;
+  --sidebar-hover: #1e2a45;
+  --content-bg: #0f0f23;
+  --text-color: #d8d4cc;
+  --text-muted: #666;
+  --border: #2a2a4a;
+  --header-bg: #16213e;
+  --shadow: rgba(0,0,0,0.3);
+  --accent: #7c73ff;
+  --accent-hover: #6a60ee;
+  --chapter-active-bg: rgba(124,115,255,0.2);
+  --scrollbar: #333;
+  --tag-bg: rgba(124,115,255,0.15);
+  --drop-zone: rgba(124,115,255,0.05);
+}
+body.eye-care {
+  --bg: #c8d5b2;
+  --sidebar-bg: #4a5c3a;
+  --sidebar-text: #d0ddc0;
+  --sidebar-hover: #5a6e48;
+  --content-bg: #d4e4b8;
+  --text-color: #2a3a1a;
+  --text-muted: #6a7a5a;
+  --border: #b0c090;
+  --header-bg: #c0d0a8;
+  --accent: #6a9650;
+  --accent-hover: #588040;
+  --chapter-active-bg: rgba(110,180,80,0.2);
+  --scrollbar: #a0b880;
+  --tag-bg: rgba(110,180,80,0.15);
+  --drop-zone: rgba(110,180,80,0.06);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'SimSun', sans-serif;
+  background: var(--bg);
+  color: var(--text-color);
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  overflow: hidden;
+  transition: background 0.3s, color 0.3s;
+  /* iOS 刘海/底部安全区 */
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+/* ===== 侧边栏（移动端抽屉式） ===== */
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 90;
+}
+#sidebar-overlay.visible { display: block; }
+
+#sidebar {
+  width: 300px;
+  min-width: 300px;
+  background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 100;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  overflow: hidden;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+#sidebar.open {
+  transform: translateX(0);
+}
+.sidebar-header {
+  padding: 20px 16px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.sidebar-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-title span { font-size: 20px; }
+.sidebar-subtitle {
+  font-size: 11px;
+  color: var(--sidebar-text);
+  margin-top: 4px;
+  opacity: 0.7;
+}
+#book-list-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 0;
+  -webkit-overflow-scrolling: touch;
+}
+.book-section { margin-bottom: 2px; }
+.book-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  cursor: pointer;
+  color: var(--sidebar-text);
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.2s;
+  user-select: none;
+}
+.book-header:active { background: var(--sidebar-hover); }
+.book-arrow { font-size: 10px; transition: transform 0.2s; opacity: 0.6; flex-shrink: 0; }
+.book-header.expanded .book-arrow { transform: rotate(90deg); }
+.book-icon { font-size: 18px; flex-shrink: 0; }
+.book-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book-count {
+  font-size: 10px;
+  background: var(--tag-bg);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.book-del-btn {
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,80,80,0.15);
+  color: #ff6060;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chapter-list { display: none; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.chapter-list.visible { display: block; }
+.chapter-item {
+  padding: 10px 16px 10px 40px;
+  font-size: 13px;
+  color: var(--sidebar-text);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+  margin: 1px 8px;
+}
+.chapter-item:active { background: var(--sidebar-hover); color: #fff; }
+.chapter-item.active {
+  background: var(--chapter-active-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.import-btn {
+  width: 100%;
+  padding: 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: inherit;
+}
+.import-btn:active { opacity: 0.85; }
+
+/* ===== 主区域 ===== */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
+}
+#topbar {
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px var(--shadow);
+}
+.topbar-btn {
+  width: 40px; height: 40px;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-color);
+  flex-shrink: 0;
+}
+.topbar-btn:active { background: var(--border); }
+#book-title-bar { flex: 1; min-width: 0; }
+#book-title-bar h2 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#book-title-bar p {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.theme-btns { display: flex; gap: 6px; flex-shrink: 0; }
+.theme-dot {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.theme-dot.active { border-color: var(--accent); }
+.theme-dot.t-light { background: #f5f0e8; box-shadow: 0 0 0 1px #ccc; }
+.theme-dot.t-dark  { background: #1a1a2e; box-shadow: 0 0 0 1px #444; }
+.theme-dot.t-eye   { background: #c8d5b2; box-shadow: 0 0 0 1px #8a9a70; }
+
+#progress-bar-wrap { height: 3px; background: var(--border); flex-shrink: 0; }
+#progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width 0.2s; }
+
+/* ===== 内容区 ===== */
+#content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 0;
+  background: var(--content-bg);
+  -webkit-overflow-scrolling: touch;
+}
+#content-wrap { max-width: 720px; margin: 0 auto; padding: 0 18px; }
+
+/* 欢迎屏 */
+#welcome-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+  gap: 16px;
+  padding: 20px;
+}
+.welcome-icon { font-size: 64px; }
+.welcome-title { font-size: 24px; font-weight: 700; color: var(--text-color); }
+.welcome-subtitle { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+#drop-zone {
+  border: 2px dashed var(--accent);
+  background: var(--drop-zone);
+  border-radius: 16px;
+  padding: 28px 32px;
+  cursor: pointer;
+  width: 100%;
+  max-width: 360px;
+}
+#drop-zone:active { background: rgba(108,99,255,0.12); }
+.drop-text { font-size: 14px; color: var(--text-muted); }
+.drop-text strong { color: var(--accent); font-size: 15px; }
+
+/* 章节标题 & 正文 */
+#chapter-title {
+  font-size: 22px; font-weight: 700;
+  color: var(--text-color);
+  margin-bottom: 28px; padding-bottom: 16px;
+  border-bottom: 2px solid var(--border);
+  display: none;
+}
+#chapter-content {
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  color: var(--text-color);
+  display: none;
+}
+#chapter-content p { margin-bottom: 1em; text-indent: 2em; }
+
+/* 翻页按钮 */
+#nav-btns {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+}
+.nav-row { display: flex; gap: 10px; }
+.nav-btn {
+  flex: 1; padding: 14px 16px;
+  border: 1px solid var(--border);
+  background: var(--header-bg); color: var(--text-color);
+  border-radius: 12px; cursor: pointer;
+  font-size: 15px; font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.nav-btn:active:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); }
+.nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.nav-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.nav-btn.primary:active:not(:disabled) { background: var(--accent-hover); }
+
+/* 底部设置栏（移动端专用） */
+#bottom-bar {
+  background: var(--header-bg);
+  border-top: 1px solid var(--border);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 12px;
+}
+.font-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+.font-btn {
+  width: 34px; height: 34px;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-color);
+  flex-shrink: 0;
+}
+.font-btn:active { background: var(--border); }
+#font-size-val { font-size: 13px; color: var(--text-muted); width: 28px; text-align: center; flex-shrink: 0; }
+
+/* 搜索弹窗 */
+#search-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 80px 16px 16px;
+}
+#search-overlay.visible { display: flex; }
+#search-box {
+  background: var(--header-bg);
+  border-radius: 16px; padding: 20px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 65vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+#search-input-wrap { display: flex; gap: 10px; margin-bottom: 14px; }
+#search-input {
+  flex: 1; padding: 12px 14px;
+  border: 2px solid var(--border); border-radius: 10px;
+  font-size: 15px;
+  background: var(--content-bg); color: var(--text-color);
+  font-family: inherit; outline: none;
+}
+#search-input:focus { border-color: var(--accent); }
+#search-results { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.search-result-item {
+  padding: 12px; border-radius: 8px;
+  cursor: pointer; margin-bottom: 8px;
+}
+.search-result-item:active { background: var(--sidebar-hover); color: #fff; }
+.search-result-chapter { font-size: 11px; color: var(--accent); margin-bottom: 4px; }
+.search-result-text { font-size: 13px; color: var(--text-color); line-height: 1.5; }
+.search-highlight {
+  background: rgba(255, 200, 0, 0.5);
+  border-radius: 2px; padding: 0 2px;
+  color: #333; font-weight: 600;
+}
+.search-empty { text-align: center; color: var(--text-muted); padding: 24px; font-size: 14px; }
+
+/* Toast */
+#toast {
+  position: fixed; bottom: calc(70px + var(--safe-bottom)); left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: #333; color: #fff;
+  padding: 10px 20px; border-radius: 20px;
+  font-size: 13px; z-index: 2000;
+  opacity: 0;
+  transition: all 0.3s; pointer-events: none;
+  max-width: calc(100vw - 40px);
+  text-align: center;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.success { background: #2a7a4a; }
+#toast.error   { background: #7a2a2a; }
+
+/* GBK提示横幅 */
+#enc-banner {
+  display: none;
+  background: #7a5a10;
+  color: #ffd;
+  font-size: 12px;
+  padding: 8px 16px;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+#enc-banner.visible { display: flex; }
+#enc-banner button {
+  border: 1px solid rgba(255,220,100,0.4);
+  background: rgba(255,220,100,0.15);
+  color: #ffd;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+/* 安装提示横幅 */
+#install-banner {
+  display: none;
+  background: var(--accent);
+  color: #fff;
+  padding: 10px 16px;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+#install-banner.visible { display: flex; }
+#install-banner span { flex: 1; font-size: 13px; }
+#install-btn {
+  background: #fff;
+  color: var(--accent);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+#install-dismiss {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+#file-input { display: none; }
+
+/* 手势滑动区域（整个内容区） */
+#swipe-area {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+</style>
+</head>
+<body>
+
+<input type="file" id="file-input" accept=".txt" multiple>
+
+<!-- 侧边栏遮罩 -->
+<div id="sidebar-overlay"></div>
+
+<!-- 侧边栏 -->
+<div id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-title"><span>📖</span> 本地书架</div>
+    <div class="sidebar-subtitle">点击"导入"按钮添加TXT小说</div>
+  </div>
+  <div id="book-list-area">
+    <div style="padding:24px 16px;text-align:center;color:var(--sidebar-text);font-size:13px;opacity:0.6">
+      暂无小说<br>点击下方"导入"按钮添加
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <button class="import-btn" id="import-btn">＋ 导入小说 TXT</button>
+  </div>
+</div>
+
+<!-- 主区域 -->
+<div id="main">
+
+  <!-- iOS 安装提示 -->
+  <div id="install-banner">
+    <span>📲 点击底部分享按钮 → "添加到主屏幕"，即可像App一样使用</span>
+    <button id="install-dismiss">✕</button>
+  </div>
+
+  <div id="topbar">
+    <button class="topbar-btn" id="toggle-sidebar-btn" title="书架">☰</button>
+    <div id="book-title-bar">
+      <h2 id="current-book-name">📚 小说阅读器</h2>
+      <p id="current-chapter-name">导入TXT文件开始阅读</p>
+    </div>
+    <div class="theme-btns">
+      <div class="theme-dot t-light active" data-theme="light" title="护眼纸质"></div>
+      <div class="theme-dot t-dark"  data-theme="dark"     title="深色模式"></div>
+      <div class="theme-dot t-eye"   data-theme="eye-care" title="绿豆沙"></div>
+    </div>
+    <button class="topbar-btn" id="search-btn" title="搜索">🔍</button>
+  </div>
+
+  <!-- GBK乱码提示 -->
+  <div id="enc-banner">
+    <span>⚠️ 检测到可能的乱码，当前 <strong id="enc-name">UTF-8</strong></span>
+    <button id="enc-retry-btn">切换编码重试</button>
+    <button id="enc-dismiss-btn" style="background:transparent;border:none;color:rgba(255,220,100,0.6);cursor:pointer;font-size:16px">✕</button>
+  </div>
+
+  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+
+  <div id="content-area">
+    <div id="content-wrap">
+      <!-- 欢迎屏 -->
+      <div id="welcome-screen">
+        <div class="welcome-icon">📚</div>
+        <div class="welcome-title">卖萌的小说阅读器</div>
+        <div class="welcome-subtitle">
+          点击左上角 ☰ 打开书架<br>
+          点击"导入"按钮选择TXT文件<br>
+          自动解析章节，离线也能用
+        </div>
+        <div id="drop-zone">
+          <div class="drop-text">
+            <strong>📂 点击导入TXT小说</strong><br>
+            <span style="margin-top:8px;display:block;font-size:12px">支持UTF-8 / GBK编码</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="chapter-title"></div>
+      <div id="chapter-content"></div>
+
+      <div id="nav-btns">
+        <div class="nav-row">
+          <button class="nav-btn" id="prev-btn">← 上一章</button>
+          <button class="nav-btn primary" id="next-btn">下一章 →</button>
+        </div>
+        <div class="nav-row">
+          <button class="nav-btn" id="top-btn">⬆ 回到顶部</button>
+          <button class="nav-btn" id="search-btn2">🔍 搜索本书</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部控制栏（移动端字号调节） -->
+  <div id="bottom-bar">
+    <div class="font-controls">
+      <button class="font-btn" id="font-dec">A−</button>
+      <span id="font-size-val">18</span>
+      <button class="font-btn" id="font-inc">A+</button>
+    </div>
+    <button class="topbar-btn" id="enc-toggle" style="width:auto;padding:0 10px;font-size:12px;">UTF-8</button>
+  </div>
+</div>
+
+<!-- 搜索弹窗 -->
+<div id="search-overlay">
+  <div id="search-box">
+    <div id="search-input-wrap">
+      <input type="text" id="search-input" placeholder="搜索当前小说内容...">
+      <button class="nav-btn" style="flex:0;padding:10px 16px" id="search-close-btn">✕</button>
+    </div>
+    <div id="search-results">
+      <div class="search-empty">输入关键词开始搜索</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+/* ========================================================
+   PWA: 注册 Service Worker
+   ======================================================== */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => {
+      console.warn('SW 注册失败:', err);
+    });
+  });
+}
+
+/* ========================================================
+   iOS 安装提示
+   ======================================================== */
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+function isInStandaloneMode() {
+  return ('standalone' in window.navigator) && window.navigator.standalone;
+}
+
+window.addEventListener('load', () => {
+  if (isIOS() && !isInStandaloneMode()) {
+    const dismissed = localStorage.getItem('install_dismissed');
+    if (!dismissed) {
+      document.getElementById('install-banner').classList.add('visible');
+    }
+  }
+});
+document.getElementById('install-dismiss').addEventListener('click', () => {
+  document.getElementById('install-banner').classList.remove('visible');
+  localStorage.setItem('install_dismissed', '1');
+});
+
+/* ========================================================
+   Android / Chrome: beforeinstallprompt
+   ======================================================== */
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  // 可在此显示安装按钮
+});
+
+/* ========================================================
+   全局状态
+   ======================================================== */
+const STATE = {
+  books: {},
+  currentBookId: null,
+  currentChapterIdx: 0,
+  theme: 'light',
+  fontSize: 18,
+  sidebarOpen: false,
+  encoding: 'UTF-8',
+  lastImportedFiles: null,
+  lastImportedBookName: null,
+};
+
+let _bookIdCounter = 0;
+function genBookId() { return 'b' + (++_bookIdCounter); }
+
+/* ========================================================
+   持久化
+   ======================================================== */
+function savePref() {
+  try {
+    localStorage.setItem('rdr_theme', STATE.theme);
+    localStorage.setItem('rdr_fontSize', STATE.fontSize);
+    if (STATE.currentBookId) {
+      const book = STATE.books[STATE.currentBookId];
+      if (book) {
+        localStorage.setItem('rdr_lastBookName', book.name);
+        localStorage.setItem('rdr_lastChapter', STATE.currentChapterIdx);
+      }
+    }
+  } catch(e) {}
+}
+
+function loadPref() {
+  try {
+    const theme = localStorage.getItem('rdr_theme') || 'light';
+    const fontSize = parseInt(localStorage.getItem('rdr_fontSize') || '18');
+    applyTheme(theme, false);
+    applyFontSize(fontSize, false);
+  } catch(e) {}
+}
+
+/* ========================================================
+   主题
+   ======================================================== */
+function applyTheme(theme, save = true) {
+  STATE.theme = theme;
+  document.body.className = theme === 'light' ? '' : theme;
+  document.querySelectorAll('.theme-dot').forEach(d =>
+    d.classList.toggle('active', d.dataset.theme === theme)
+  );
+  // 更新 theme-color meta
+  document.querySelector('meta[name="theme-color"]').content =
+    theme === 'dark' ? '#16213e' : theme === 'eye-care' ? '#c0d0a8' : '#6c63ff';
+  if (save) savePref();
+}
+
+/* ========================================================
+   字体大小
+   ======================================================== */
+function applyFontSize(val, save = true) {
+  const n = Math.min(28, Math.max(14, parseInt(val)));
+  STATE.fontSize = n;
+  document.documentElement.style.setProperty('--font-size', n + 'px');
+  document.getElementById('font-size-val').textContent = n;
+  if (save) savePref();
+}
+
+/* ========================================================
+   侧边栏（移动端抽屉）
+   ======================================================== */
+function openSidebar() {
+  STATE.sidebarOpen = true;
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('visible');
+}
+function closeSidebar() {
+  STATE.sidebarOpen = false;
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('visible');
+}
+function toggleSidebar() {
+  if (STATE.sidebarOpen) closeSidebar(); else openSidebar();
+}
+
+/* ========================================================
+   文件导入
+   ======================================================== */
+function triggerImport() {
+  document.getElementById('file-input').click();
+}
+
+document.getElementById('file-input').addEventListener('change', function(e) {
+  const files = Array.from(e.target.files).filter(f => f.name.toLowerCase().endsWith('.txt'));
+  if (files.length) handleIncomingFiles(files);
+  this.value = '';
+});
+
+/* ========================================================
+   处理传入文件
+   ======================================================== */
+function handleIncomingFiles(files) {
+  if (!files.length) return;
+  STATE.lastImportedFiles = files;
+  closeSidebar();
+
+  if (files.length === 1) {
+    const bookName = inferBookName(files[0].name);
+    STATE.lastImportedBookName = bookName;
+    readFiles(bookName, files, STATE.encoding);
+  } else {
+    const suggested = inferBookName(files[0].name);
+    const bookName = prompt(
+      `导入 ${files.length} 个TXT文件，请输入书名：`,
+      suggested
+    );
+    if (bookName === null) return;
+    const name = bookName.trim() || suggested;
+    STATE.lastImportedBookName = name;
+    readFiles(name, files, STATE.encoding);
+  }
+}
+
+function inferBookName(filename) {
+  let name = filename.replace(/\.txt$/i, '');
+  name = name.replace(/[_\-]?第?\s*\d+\s*[章卷册部].*$/, '');
+  name = name.replace(/[_\-]?\d+$/, '');
+  name = name.trim();
+  return name || filename.replace(/\.txt$/i, '');
+}
+
+function readFiles(bookName, files, encoding) {
+  showToast(`正在导入「${bookName}」...`);
+  const sorted = files.slice().sort((a, b) => naturalSort(a.name, b.name));
+  const results = [];
+  let idx = 0;
+  function readNext() {
+    if (idx >= sorted.length) { addBookFromResults(bookName, results); return; }
+    const file = sorted[idx++];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const content = e.target.result;
+      results.push({ name: file.name, content });
+      const replacements = (content.match(/\ufffd/g) || []).length;
+      if (replacements > content.length * 0.05) showEncBanner(encoding);
+      readNext();
+    };
+    reader.onerror = function() { results.push({ name: file.name, content: '' }); readNext(); };
+    reader.readAsText(file, encoding);
+  }
+  readNext();
+}
+
+function showEncBanner(enc) {
+  document.getElementById('enc-name').textContent = enc;
+  document.getElementById('enc-banner').classList.add('visible');
+}
+
+function addBookFromResults(bookName, results) {
+  let bookId = null;
+  for (const [id, b] of Object.entries(STATE.books)) {
+    if (b.name === bookName) { bookId = id; break; }
+  }
+  if (!bookId) {
+    bookId = genBookId();
+    STATE.books[bookId] = { id: bookId, name: bookName, chapters: [] };
+  } else {
+    STATE.books[bookId].chapters = [];
+  }
+  let totalChapters = 0;
+  results.forEach(({ name, content }) => {
+    if (!content) return;
+    const chs = parseChapters(content, name);
+    STATE.books[bookId].chapters.push(...chs);
+    totalChapters += chs.length;
+  });
+  renderBookList();
+  showToast(`✅ 「${bookName}」导入成功，共 ${totalChapters} 章`, 'success');
+  openBook(bookId);
+}
+
+/* ========================================================
+   章节解析
+   ======================================================== */
+const CHAPTER_PATTERNS = [
+  /^第[零一二三四五六七八九十百千万\d〇]+[章节卷集部篇回]/,
+  /^Chapter\s*\d+/i,
+  /^卷[零一二三四五六七八九十百千万\d〇]+/,
+  /^(?:楔子|序章|序言|前言|尾声|番外|后记|终章|附录)/,
+  /^\d+[、.．。]\s*.{1,30}$/,
+];
+function isChapterTitle(line) {
+  const t = line.trim();
+  if (!t || t.length > 60) return false;
+  if (/^\d+$/.test(t)) return false;
+  return CHAPTER_PATTERNS.some(p => p.test(t));
+}
+function parseChapters(content, filename) {
+  const lines = content.split(/\r?\n/);
+  const chapters = [];
+  let currentTitle = null;
+  let buf = [];
+  const flush = (title, buffer) => {
+    const text = buffer.join('\n').trim();
+    if (title || text) chapters.push({ title: title || filename.replace(/\.txt$/i, ''), content: text });
+  };
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (isChapterTitle(trimmed)) { flush(currentTitle, buf); currentTitle = trimmed; buf = []; }
+    else buf.push(line);
+  }
+  flush(currentTitle, buf);
+  if (!chapters.length) {
+    const text = content.trim();
+    if (text) chapters.push({ title: filename.replace(/\.txt$/i, ''), content: text });
+  }
+  return chapters;
+}
+function naturalSort(a, b) {
+  return a.localeCompare(b, 'zh', { numeric: true, sensitivity: 'base' });
+}
+
+/* ========================================================
+   渲染书架
+   ======================================================== */
+function renderBookList() {
+  const area = document.getElementById('book-list-area');
+  const books = Object.values(STATE.books);
+  if (!books.length) {
+    area.innerHTML = `<div style="padding:24px 16px;text-align:center;
+      color:var(--sidebar-text);font-size:13px;opacity:0.6">
+      暂无小说<br>点击下方「导入」按钮添加</div>`;
+    return;
+  }
+  area.innerHTML = books.map(book => {
+    const isExpanded = STATE.currentBookId === book.id;
+    const safeId = book.id;
+    const chaptersHtml = book.chapters.map((ch, idx) => {
+      const isActive = STATE.currentBookId === book.id && STATE.currentChapterIdx === idx;
+      return `<div class="chapter-item${isActive ? ' active' : ''}"
+                   id="ci-${safeId}-${idx}"
+                   data-book="${safeId}" data-idx="${idx}">
+                ${escHtml(ch.title)}
+              </div>`;
+    }).join('');
+    return `<div class="book-section">
+      <div class="book-header${isExpanded ? ' expanded' : ''}" data-book="${safeId}">
+        <span class="book-arrow">▶</span>
+        <span class="book-icon">📕</span>
+        <span class="book-name" title="${escHtml(book.name)}">${escHtml(book.name)}</span>
+        <span class="book-count">${book.chapters.length}章</span>
+        <button class="book-del-btn" data-del="${safeId}" title="删除">✕</button>
+      </div>
+      <div class="chapter-list${isExpanded ? ' visible' : ''}" id="cl-${safeId}">
+        ${chaptersHtml}
+      </div>
+    </div>`;
+  }).join('');
+
+  area.querySelectorAll('.book-header').forEach(el => {
+    el.addEventListener('click', function(e) {
+      if (e.target.classList.contains('book-del-btn')) return;
+      toggleBook(this.dataset.book);
+    });
+  });
+  area.querySelectorAll('.book-del-btn').forEach(el => {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      deleteBook(this.dataset.del);
+    });
+  });
+  area.querySelectorAll('.chapter-item').forEach(el => {
+    el.addEventListener('click', function() {
+      loadChapter(this.dataset.book, parseInt(this.dataset.idx));
+      closeSidebar();
+    });
+  });
+}
+
+function toggleBook(bookId) {
+  if (STATE.currentBookId === bookId) {
+    const header = document.querySelector(`[data-book="${bookId}"].book-header`);
+    const list = document.getElementById(`cl-${bookId}`);
+    if (header) header.classList.toggle('expanded');
+    if (list) list.classList.toggle('visible');
+  } else {
+    openBook(bookId);
+  }
+}
+
+function openBook(bookId) {
+  STATE.currentBookId = bookId;
+  const book = STATE.books[bookId];
+  if (!book) return;
+  let savedChapter = 0;
+  try {
+    const savedName = localStorage.getItem('rdr_lastBookName');
+    if (savedName === book.name) {
+      savedChapter = parseInt(localStorage.getItem('rdr_lastChapter') || '0');
+      if (savedChapter >= book.chapters.length) savedChapter = 0;
+    }
+  } catch(e) {}
+  STATE.currentChapterIdx = savedChapter;
+  renderBookList();
+  loadChapter(bookId, savedChapter);
+  setTimeout(() => {
+    const el = document.getElementById(`ci-${bookId}-${savedChapter}`);
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, 150);
+}
+
+function deleteBook(bookId) {
+  const book = STATE.books[bookId];
+  if (!book) return;
+  if (!confirm(`确定移除「${book.name}」吗？`)) return;
+  delete STATE.books[bookId];
+  if (STATE.currentBookId === bookId) {
+    STATE.currentBookId = null;
+    STATE.currentChapterIdx = 0;
+    showWelcome();
+  }
+  renderBookList();
+  showToast(`已移除「${book.name}」`);
+}
+
+function showWelcome() {
+  document.getElementById('welcome-screen').style.display = 'flex';
+  document.getElementById('chapter-title').style.display = 'none';
+  document.getElementById('chapter-content').style.display = 'none';
+  document.getElementById('nav-btns').style.display = 'none';
+  document.getElementById('current-book-name').textContent = '📚 小说阅读器';
+  document.getElementById('current-chapter-name').textContent = '导入TXT文件开始阅读';
+  document.getElementById('progress-bar').style.width = '0%';
+}
+
+/* ========================================================
+   加载章节
+   ======================================================== */
+function loadChapter(bookId, idx) {
+  const book = STATE.books[bookId];
+  if (!book) return;
+  if (idx < 0) idx = 0;
+  if (idx >= book.chapters.length) idx = book.chapters.length - 1;
+  if (!book.chapters[idx]) return;
+
+  STATE.currentBookId = bookId;
+  STATE.currentChapterIdx = idx;
+  const ch = book.chapters[idx];
+
+  document.getElementById('current-book-name').textContent = book.name;
+  document.getElementById('current-chapter-name').textContent = ch.title;
+
+  document.getElementById('welcome-screen').style.display = 'none';
+  document.getElementById('chapter-title').style.display = 'block';
+  document.getElementById('chapter-content').style.display = 'block';
+  document.getElementById('nav-btns').style.display = 'flex';
+
+  document.getElementById('chapter-title').textContent = ch.title;
+
+  const html = ch.content
+    .split(/\n+/)
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+    .map(l => `<p>${escHtml(l)}</p>`)
+    .join('');
+
+  document.getElementById('chapter-content').innerHTML =
+    html || '<p style="color:var(--text-muted)">（本章内容为空）</p>';
+
+  document.getElementById('prev-btn').disabled = (idx === 0);
+  document.getElementById('next-btn').disabled = (idx === book.chapters.length - 1);
+
+  document.getElementById('content-area').scrollTop = 0;
+  updateProgress();
+
+  try {
+    localStorage.setItem('rdr_lastBookName', book.name);
+    localStorage.setItem('rdr_lastChapter', idx);
+  } catch(e) {}
+
+  document.querySelectorAll('.chapter-item').forEach(el => el.classList.remove('active'));
+  const activeEl = document.getElementById(`ci-${bookId}-${idx}`);
+  if (activeEl) activeEl.classList.add('active');
+
+  savePref();
+}
+
+function prevChapter() {
+  if (!STATE.currentBookId) return;
+  if (STATE.currentChapterIdx > 0)
+    loadChapter(STATE.currentBookId, STATE.currentChapterIdx - 1);
+}
+
+function nextChapter() {
+  if (!STATE.currentBookId) return;
+  const book = STATE.books[STATE.currentBookId];
+  if (book && STATE.currentChapterIdx < book.chapters.length - 1)
+    loadChapter(STATE.currentBookId, STATE.currentChapterIdx + 1);
+}
+
+/* ========================================================
+   进度条
+   ======================================================== */
+function updateProgress() {
+  const area = document.getElementById('content-area');
+  const max = area.scrollHeight - area.clientHeight;
+  const ratio = max <= 0 ? 0 : Math.min(1, area.scrollTop / max);
+  document.getElementById('progress-bar').style.width = (ratio * 100).toFixed(1) + '%';
+}
+
+/* ========================================================
+   搜索
+   ======================================================== */
+function openSearch() {
+  if (!STATE.currentBookId) { showToast('请先打开一本书再搜索', 'error'); return; }
+  document.getElementById('search-overlay').classList.add('visible');
+  const inp = document.getElementById('search-input');
+  inp.value = '';
+  document.getElementById('search-results').innerHTML =
+    '<div class="search-empty">输入关键词开始搜索</div>';
+  setTimeout(() => inp.focus(), 100);
+}
+
+function closeSearch() {
+  document.getElementById('search-overlay').classList.remove('visible');
+}
+
+function doSearch() {
+  const query = document.getElementById('search-input').value.trim();
+  const resultsEl = document.getElementById('search-results');
+  if (!query) { resultsEl.innerHTML = '<div class="search-empty">输入关键词开始搜索</div>'; return; }
+  if (!STATE.currentBookId) return;
+  const book = STATE.books[STATE.currentBookId];
+  if (!book) return;
+  let re;
+  try { re = new RegExp(escRegex(query), 'gi'); } catch(e) { return; }
+  const results = [];
+  book.chapters.forEach((ch, idx) => {
+    const matches = ch.content.match(re);
+    if (!matches) return;
+    const pos = ch.content.search(re);
+    const start = Math.max(0, pos - 40);
+    const end = Math.min(ch.content.length, pos + 100);
+    const rawExcerpt = ch.content.slice(start, end).replace(/[\r\n]+/g, ' ');
+    const highlightedExcerpt = rawExcerpt.split(re).map((part, i) => {
+      const escaped = escHtml(part);
+      if (i === 0) return escaped;
+      const matchWord = rawExcerpt.match(re)?.[i - 1] || query;
+      return `<span class="search-highlight">${escHtml(matchWord)}</span>${escaped}`;
+    }).join('');
+    results.push({ chIdx: idx, title: ch.title, excerpt: highlightedExcerpt, count: matches.length });
+  });
+  if (!results.length) {
+    resultsEl.innerHTML = `<div class="search-empty">未找到「${escHtml(query)}」的内容</div>`;
+    return;
+  }
+  resultsEl.innerHTML = results.slice(0, 50).map(r => `
+    <div class="search-result-item" data-idx="${r.chIdx}">
+      <div class="search-result-chapter">📖 ${escHtml(r.title)} · ${r.count} 处</div>
+      <div class="search-result-text">…${r.excerpt}…</div>
+    </div>
+  `).join('');
+  resultsEl.querySelectorAll('.search-result-item').forEach(el => {
+    el.addEventListener('click', function() {
+      closeSearch();
+      loadChapter(STATE.currentBookId, parseInt(this.dataset.idx));
+    });
+  });
+}
+
+/* ========================================================
+   工具函数
+   ======================================================== */
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function escRegex(str) { return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+let _toastTimer;
+function showToast(msg, type = '', duration = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (type ? ' ' + type : '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = ''; }, duration);
+}
+
+/* ========================================================
+   触摸手势：左右滑动翻章节
+   ======================================================== */
+(function setupSwipe() {
+  let startX = 0, startY = 0;
+  const area = document.getElementById('content-area');
+  area.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  area.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 60) {
+      if (dx < 0) nextChapter();
+      else prevChapter();
+    }
+  }, { passive: true });
+})();
+
+/* ========================================================
+   事件绑定
+   ======================================================== */
+function bindEvents() {
+  document.getElementById('toggle-sidebar-btn').addEventListener('click', toggleSidebar);
+  document.getElementById('sidebar-overlay').addEventListener('click', closeSidebar);
+  document.getElementById('import-btn').addEventListener('click', triggerImport);
+  document.getElementById('drop-zone').addEventListener('click', triggerImport);
+
+  // 字体按钮（移动端 A- A+）
+  document.getElementById('font-dec').addEventListener('click', () => applyFontSize(STATE.fontSize - 1));
+  document.getElementById('font-inc').addEventListener('click', () => applyFontSize(STATE.fontSize + 1));
+
+  // 主题
+  document.querySelectorAll('.theme-dot').forEach(el => {
+    el.addEventListener('click', function() { applyTheme(this.dataset.theme); });
+  });
+
+  // 搜索
+  document.getElementById('search-btn').addEventListener('click', openSearch);
+  document.getElementById('search-btn2').addEventListener('click', openSearch);
+  document.getElementById('search-close-btn').addEventListener('click', closeSearch);
+  document.getElementById('search-input').addEventListener('input', doSearch);
+  document.getElementById('search-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('search-overlay')) closeSearch();
+  });
+
+  // 翻页
+  document.getElementById('prev-btn').addEventListener('click', prevChapter);
+  document.getElementById('next-btn').addEventListener('click', nextChapter);
+  document.getElementById('top-btn').addEventListener('click', () => {
+    document.getElementById('content-area').scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // 进度条
+  document.getElementById('content-area').addEventListener('scroll', updateProgress);
+
+  // 编码切换
+  const encBtn = document.getElementById('enc-toggle');
+  encBtn.addEventListener('click', function() {
+    STATE.encoding = STATE.encoding === 'UTF-8' ? 'GBK' : 'UTF-8';
+    this.textContent = STATE.encoding;
+    showToast(`编码已切换为 ${STATE.encoding}，下次导入生效`);
+  });
+  document.getElementById('enc-retry-btn').addEventListener('click', function() {
+    if (!STATE.lastImportedFiles || !STATE.lastImportedBookName) return;
+    STATE.encoding = STATE.encoding === 'UTF-8' ? 'GBK' : 'UTF-8';
+    document.getElementById('enc-toggle').textContent = STATE.encoding;
+    document.getElementById('enc-banner').classList.remove('visible');
+    showToast(`用 ${STATE.encoding} 重新读取...`);
+    readFiles(STATE.lastImportedBookName, STATE.lastImportedFiles, STATE.encoding);
+  });
+  document.getElementById('enc-dismiss-btn').addEventListener('click', () => {
+    document.getElementById('enc-banner').classList.remove('visible');
+  });
+}
+
+/* ========================================================
+   初始化
+   ======================================================== */
+function init() {
+  loadPref();
+  bindEvents();
+  renderBookList();
+}
+
+init();
+</script>
+</body>
+</html>
